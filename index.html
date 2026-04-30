@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>坦克 AI 策略編輯器 V28 - 4x5 擴大版</title>
+    <title>坦克 AI 策略編輯器 (9x5) - V29 預設配置更新</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .grid-cell {
@@ -24,6 +24,7 @@
         .middle-zone { background-color: #ffffff; }
         .char-red { background-color: #ef4444; color: white; border-radius: 50%; width: 85%; height: 85%; z-index: 10; position: relative; cursor: grab; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
         .char-blue { background-color: #3b82f6; color: white; border-radius: 50%; width: 85%; height: 85%; z-index: 10; position: relative; cursor: grab; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .minion { border-radius: 20% !important; scale: 0.8; }
         .tank-mark { border: 4px solid #fbbf24; box-shadow: 0 0 15px rgba(251, 191, 36, 0.6); }
         .action-badge { position: absolute; bottom: -4px; right: -4px; background: #1f2937; color: #fff; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; display: flex; align-items: center; justify-content: center; border: 1.5px solid white; z-index: 25; }
         .taunted-status::after { content: "💢"; position: absolute; top: -10px; right: -6px; font-size: 1.2rem; filter: drop-shadow(0 0 2px white); z-index: 30; }
@@ -42,14 +43,16 @@
 <body class="bg-slate-50 min-h-screen p-4 flex flex-col items-center">
 
     <div class="max-w-6xl w-full bg-white rounded-2xl shadow-2xl p-6 border border-slate-200">
-        <h1 class="text-2xl font-black mb-6 text-slate-800 text-center tracking-tight">坦克 AI 策略編輯器 V28 (4x5 區域)</h1>
+        <h1 class="text-2xl font-black mb-6 text-slate-800 text-center tracking-tight">坦克 AI 策略編輯器 V29</h1>
         
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- 左側：策略設定與控制 -->
             <div class="lg:col-span-4 space-y-4">
+                
                 <div class="p-4 border border-slate-200 rounded-xl bg-slate-50 shadow-sm">
                     <h2 class="font-bold mb-3 text-xs text-slate-500 uppercase tracking-widest flex justify-between items-center">
                         <span>AI 優先權策略排序</span>
-                        <span class="text-[9px] text-slate-400 normal-case italic">拖動以修改</span>
+                        <span class="text-[9px] text-slate-400 normal-case italic">拖動以修改優先級</span>
                     </h2>
                     <div id="priority-list" class="space-y-2"></div>
                 </div>
@@ -66,18 +69,20 @@
                     </div>
 
                     <div class="grid grid-cols-2 gap-2">
-                        <button onclick="setupMinimalTest()" class="py-2 bg-amber-500 text-white rounded-lg font-bold text-[10px] hover:bg-amber-600">精簡配置 (雙隊 1T3P)</button>
-                        <button onclick="restorePositions()" class="py-2 bg-slate-600 text-white rounded-lg font-bold text-[10px] hover:bg-slate-700">還原初始狀態</button>
+                        <button onclick="setupMinimalTest()" class="py-2 bg-amber-500 text-white rounded-lg font-bold text-[10px] hover:bg-amber-600 shadow-sm italic">精簡配置 (重置為圖示)</button>
+                        <button onclick="restorePositions()" class="py-2 bg-slate-600 text-white rounded-lg font-bold text-[10px] hover:bg-slate-700">還原位置</button>
                     </div>
-                    <button onclick="resetGrid()" class="w-full py-2 border border-slate-300 rounded-lg text-slate-500 text-[11px] font-medium hover:bg-slate-50">全部重置地圖</button>
+                    <button onclick="resetGrid()" class="w-full py-2 border border-slate-300 rounded-lg text-slate-500 text-[11px] font-medium hover:bg-slate-100">完全清空地圖</button>
                 </div>
 
                 <div id="log" class="p-4 border border-slate-800 rounded-xl bg-slate-900 text-emerald-400 font-mono text-[10px] h-32 overflow-y-auto shadow-inner leading-relaxed">
-                    V28 就緒。紅藍區域已擴大至 4x5。
+                    V29 啟動。預設佈局已更新。
                 </div>
             </div>
 
+            <!-- 右側：地圖展示 -->
             <div class="lg:col-span-8 flex flex-col items-center">
+                
                 <div class="mb-4 flex gap-4 bg-white p-2 rounded-lg border border-slate-200 shadow-sm text-[10px] font-bold">
                     <span>配置模式：</span>
                     <button onclick="setMode('red')" id="btn-red" class="px-2 py-1 bg-red-100 text-red-600 rounded btn-active border border-red-200">紅英雄</button>
@@ -89,6 +94,10 @@
                     <svg id="aoe-overlay"></svg>
                     <svg id="trail-overlay"></svg>
                     <div id="grid-container" class="contents"></div>
+                </div>
+                
+                <div class="mt-4 text-[10px] text-slate-400 italic">
+                    小提示：英雄放置限 4x5 區域，放置後可隨意拖拽。
                 </div>
             </div>
         </div>
@@ -115,9 +124,24 @@
             gridState = Array(ROWS * COLS).fill(null).map(() => ({ 
                 type: null, isTank: false, isMinion: false, taunted: false, tauntedByAction: null, actionId: null 
             }));
+            
+            // 預設佈局 (1T + 3P)
+            // 紅方 (Row 0-3)
+            gridState[7] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null };  // (1,2) P
+            gridState[11] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null }; // (2,1) P
+            gridState[13] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null }; // (2,3) P
+            gridState[17] = { type: 'red', isTank: true, isMinion: false, taunted: false, actionId: null };  // (3,2) T
+            
+            // 藍方 (Row 5-8)
+            gridState[27] = { type: 'blue', isTank: true, isMinion: false, taunted: false, actionId: null }; // (5,2) T
+            gridState[31] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null }; // (6,1) P
+            gridState[33] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null }; // (6,3) P
+            gridState[37] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null }; // (7,2) P
+
             snapshotState = null; globalActionCounter = 0; lastActionTankIdx = null;
             lastActionCandidates = []; moveTrails = { red: null, blue: null };
-            renderPriorityUI(); renderGrid();
+            renderPriorityUI();
+            renderGrid();
         }
 
         function renderPriorityUI() {
@@ -169,17 +193,7 @@
 
         function setupMinimalTest() {
             initGrid();
-            // 紅隊對稱
-            gridState[2] = { type: 'red', isTank: true, isMinion: false, taunted: false, actionId: null };
-            gridState[6] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null };
-            gridState[8] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null };
-            gridState[12] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null };
-            // 藍隊對稱
-            gridState[42] = { type: 'blue', isTank: true, isMinion: false, taunted: false, actionId: null };
-            gridState[36] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null };
-            gridState[38] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null };
-            gridState[32] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null };
-            log("配置完成。"); renderGrid();
+            log("精簡配置已重置為圖示陣型。");
         }
 
         function saveSnapshot() { if (!snapshotState) snapshotState = JSON.parse(JSON.stringify(gridState)); }
@@ -188,15 +202,24 @@
             gridState.forEach(s => { s.taunted = false; s.tauntedByAction = null; s.actionId = null; });
             globalActionCounter = 0; lastActionTankIdx = null; lastActionCandidates = [];
             moveTrails = { red: null, blue: null }; renderGrid();
+            log("已還原配置。");
         }
-        function resetGrid() { initGrid(); log("完全重置。"); }
+        function resetGrid() { 
+            gridState = Array(ROWS * COLS).fill(null).map(() => ({ 
+                type: null, isTank: false, isMinion: false, taunted: false, tauntedByAction: null, actionId: null 
+            }));
+            snapshotState = null; globalActionCounter = 0; lastActionTankIdx = null;
+            lastActionCandidates = []; moveTrails = { red: null, blue: null };
+            renderGrid();
+            log("地圖已清空。"); 
+        }
 
         function toggleCell(idx) {
             const r = Math.floor(idx / COLS), currentState = gridState[idx];
             if (placementMode === 'tank') {
                 if (currentState.type === null) return;
                 gridState.forEach(s => { if (s.type === currentState.type) s.isTank = false; });
-                currentState.isTank = true;
+                currentState.isTank = true; currentState.isMinion = false;
             } else {
                 if ((placementMode === 'red' && currentState.type === 'red') || (placementMode === 'blue' && currentState.type === 'blue')) {
                     gridState[idx] = { type: null, isTank: false, isMinion: false, taunted: false };
@@ -251,7 +274,7 @@
                 if (aoeCenterIdx !== null && (Math.abs(r-Math.floor(aoeCenterIdx/COLS)) + Math.abs(c-(aoeCenterIdx%COLS))) <= 3) cell.classList.add('aoe-highlight');
                 cell.onclick = () => toggleCell(i); container.appendChild(cell);
             }
-            setTimeout(() => { drawTrails(); if(aoeCenterIdx !== null) drawAOE(aoeCenterIdx); }, 50);
+            setTimeout(() => { drawTrails(); if(aoeCenterIdx !== null) drawAOE(aoeCenterIdx); else document.getElementById('aoe-overlay').innerHTML=''; }, 50);
         }
 
         async function moveRed() { runAI('red'); }
@@ -309,7 +332,8 @@
             moveTrails[team] = { from: tankIdx, to: best.idx, actionId: actionId };
             const tData = gridState[tankIdx]; tData.actionId = actionId;
             gridState[tankIdx] = { type: null, isTank: false, isMinion: false, taunted: false };
-            gridState[best.idx] = tData; return { targetIdx: best.idx, tauntedList: best.tList };
+            gridState[best.idx] = tData;
+            return { targetIdx: best.idx, tauntedList: best.tList };
         }
 
         function drawTrails() {
