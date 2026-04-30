@@ -1,14 +1,346 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tank AI Strategy Editor</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>坦克 AI 策略編輯器 V28 - 4x5 擴大版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .grid-cell {
+            aspect-ratio: 1 / 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #e5e7eb;
+            cursor: pointer;
+            transition: all 0.15s;
+            position: relative;
+            font-size: 0.7rem;
+            font-weight: bold;
+            overflow: visible;
+        }
+        .red-zone { background-color: rgba(254, 202, 202, 0.4); }
+        .blue-zone { background-color: rgba(191, 219, 254, 0.4); }
+        .middle-zone { background-color: #ffffff; }
+        .char-red { background-color: #ef4444; color: white; border-radius: 50%; width: 85%; height: 85%; z-index: 10; position: relative; cursor: grab; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .char-blue { background-color: #3b82f6; color: white; border-radius: 50%; width: 85%; height: 85%; z-index: 10; position: relative; cursor: grab; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .tank-mark { border: 4px solid #fbbf24; box-shadow: 0 0 15px rgba(251, 191, 36, 0.6); }
+        .action-badge { position: absolute; bottom: -4px; right: -4px; background: #1f2937; color: #fff; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; display: flex; align-items: center; justify-content: center; border: 1.5px solid white; z-index: 25; }
+        .taunted-status::after { content: "💢"; position: absolute; top: -10px; right: -6px; font-size: 1.2rem; filter: drop-shadow(0 0 2px white); z-index: 30; }
+        .taunt-action-label { position: absolute; top: -16px; right: -16px; font-size: 10px; color: #fff; background: #dc2626; border-radius: 4px; padding: 0 4px; border: 1px solid white; z-index: 31; font-weight: 800; }
+        .ghost-trail { position: absolute; width: 70%; height: 70%; border-radius: 50%; border: 2px dashed rgba(0,0,0,0.2); background: rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: center; font-size: 9px; color: rgba(0,0,0,0.4); pointer-events: none; }
+        .candidate-mark { position: absolute; width: 60%; height: 60%; border-radius: 50%; border: 3px dashed #10b981; background: rgba(16, 185, 129, 0.1); z-index: 4; pointer-events: none; }
+        .aoe-highlight { box-shadow: inset 0 0 0 4px rgba(245, 158, 11, 0.6), inset 0 0 20px rgba(245, 158, 11, 0.2) !important; z-index: 2; }
+        @keyframes pulse-aoe { 0% { opacity: 0.4; stroke-width: 2; } 50% { opacity: 0.8; stroke-width: 4; } 100% { opacity: 0.4; stroke-width: 2; } }
+        .aoe-diamond-svg { fill: rgba(245, 158, 11, 0.1); stroke: #f59e0b; stroke-dasharray: 8,4; filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.8)); animation: pulse-aoe 2.5s infinite ease-in-out; pointer-events: none; }
+        .drag-over { background-color: rgba(16, 185, 129, 0.2) !important; border: 2px solid #10b981; }
+        .btn-active { ring: 2px; ring-offset: 2px; ring-color: #374151; opacity: 1 !important; transform: scale(1.05); }
+        #trail-overlay, #aoe-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        .priority-item { cursor: move; }
+    </style>
 </head>
-<body>
-    <h1>Welcome to the Tank AI Strategy Editor</h1>
-    <p>Your AI tank strategies can be developed and tested here.</p>
-    <script src="script.js"></script>
+<body class="bg-slate-50 min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-6xl w-full bg-white rounded-2xl shadow-2xl p-6 border border-slate-200">
+        <h1 class="text-2xl font-black mb-6 text-slate-800 text-center tracking-tight">坦克 AI 策略編輯器 V28 (4x5 區域)</h1>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div class="lg:col-span-4 space-y-4">
+                <div class="p-4 border border-slate-200 rounded-xl bg-slate-50 shadow-sm">
+                    <h2 class="font-bold mb-3 text-xs text-slate-500 uppercase tracking-widest flex justify-between items-center">
+                        <span>AI 優先權策略排序</span>
+                        <span class="text-[9px] text-slate-400 normal-case italic">拖動以修改</span>
+                    </h2>
+                    <div id="priority-list" class="space-y-2"></div>
+                </div>
+
+                <div class="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
+                    <div class="flex gap-2">
+                        <button onclick="moveRed()" class="flex-1 py-2.5 bg-red-600 text-white rounded-lg font-black hover:bg-red-700 shadow-md">紅隊行動</button>
+                        <button onclick="moveBlue()" class="flex-1 py-2.5 bg-blue-600 text-white rounded-lg font-black hover:bg-blue-700 shadow-md">藍隊行動</button>
+                    </div>
+                    
+                    <div class="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+                        <label class="text-[11px] font-bold text-slate-600">測試模式顯示候選位</label>
+                        <input type="checkbox" id="toggle-test" checked onchange="handleUIRefresh()" class="w-4 h-4 accent-emerald-500">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="setupMinimalTest()" class="py-2 bg-amber-500 text-white rounded-lg font-bold text-[10px] hover:bg-amber-600">精簡配置 (雙隊 1T3P)</button>
+                        <button onclick="restorePositions()" class="py-2 bg-slate-600 text-white rounded-lg font-bold text-[10px] hover:bg-slate-700">還原初始狀態</button>
+                    </div>
+                    <button onclick="resetGrid()" class="w-full py-2 border border-slate-300 rounded-lg text-slate-500 text-[11px] font-medium hover:bg-slate-50">全部重置地圖</button>
+                </div>
+
+                <div id="log" class="p-4 border border-slate-800 rounded-xl bg-slate-900 text-emerald-400 font-mono text-[10px] h-32 overflow-y-auto shadow-inner leading-relaxed">
+                    V28 就緒。紅藍區域已擴大至 4x5。
+                </div>
+            </div>
+
+            <div class="lg:col-span-8 flex flex-col items-center">
+                <div class="mb-4 flex gap-4 bg-white p-2 rounded-lg border border-slate-200 shadow-sm text-[10px] font-bold">
+                    <span>配置模式：</span>
+                    <button onclick="setMode('red')" id="btn-red" class="px-2 py-1 bg-red-100 text-red-600 rounded btn-active border border-red-200">紅英雄</button>
+                    <button onclick="setMode('blue')" id="btn-blue" class="px-2 py-1 bg-blue-100 text-blue-600 rounded opacity-50 border border-blue-200">藍英雄</button>
+                    <button onclick="setMode('tank')" id="btn-tank" class="px-2 py-1 bg-yellow-100 text-amber-600 rounded opacity-50 border border-amber-200">設為坦克</button>
+                </div>
+
+                <div id="grid-wrapper" class="relative inline-grid grid-cols-5 gap-1 p-2 bg-slate-200 rounded-xl shadow-inner w-full max-w-sm border-4 border-slate-200">
+                    <svg id="aoe-overlay"></svg>
+                    <svg id="trail-overlay"></svg>
+                    <div id="grid-container" class="contents"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ROWS = 9, COLS = 5;
+        let placementMode = 'red', gridState = [], snapshotState = null;
+        let globalActionCounter = 0, lastActionTankIdx = null, lastActionCandidates = [];
+        let moveTrails = { red: null, blue: null };
+
+        let aiStrategies = [
+            { id: 'count', name: '嘲諷人數最大化', enabled: true },
+            { id: 'steps', name: '移動步數最小化', enabled: true },
+            { id: 'forward', name: '向前推進優先', enabled: true }
+        ];
+
+        function log(msg) {
+            const l = document.getElementById('log');
+            if (l) { l.innerHTML += `<br>> ${msg}`; l.scrollTop = l.scrollHeight; }
+        }
+
+        function initGrid() {
+            gridState = Array(ROWS * COLS).fill(null).map(() => ({ 
+                type: null, isTank: false, isMinion: false, taunted: false, tauntedByAction: null, actionId: null 
+            }));
+            snapshotState = null; globalActionCounter = 0; lastActionTankIdx = null;
+            lastActionCandidates = []; moveTrails = { red: null, blue: null };
+            renderPriorityUI(); renderGrid();
+        }
+
+        function renderPriorityUI() {
+            const list = document.getElementById('priority-list');
+            if (!list) return;
+            list.innerHTML = '';
+            aiStrategies.forEach((strat, index) => {
+                const item = document.createElement('div');
+                item.className = `flex items-center justify-between p-3 bg-white border border-slate-200 rounded-lg priority-item shadow-sm ${!strat.enabled ? 'opacity-60' : ''}`;
+                item.draggable = true;
+                item.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="bg-slate-800 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black">${index + 1}</span>
+                        <span class="text-xs font-bold text-slate-700">${strat.name}</span>
+                    </div>
+                    <input type="checkbox" ${strat.enabled ? 'checked' : ''} onchange="toggleStrat('${strat.id}')" class="w-4 h-4 accent-slate-800">
+                `;
+                item.ondragstart = (e) => e.dataTransfer.setData('stratIdx', index);
+                item.ondragover = (e) => e.preventDefault();
+                item.ondrop = (e) => {
+                    const from = parseInt(e.dataTransfer.getData('stratIdx'));
+                    const to = index;
+                    const temp = aiStrategies[from];
+                    aiStrategies.splice(from, 1);
+                    aiStrategies.splice(to, 0, temp);
+                    renderPriorityUI();
+                };
+                list.appendChild(item);
+            });
+        }
+
+        function toggleStrat(id) {
+            const s = aiStrategies.find(x => x.id === id);
+            if(s) s.enabled = !s.enabled;
+            renderPriorityUI();
+        }
+
+        function setMode(mode) {
+            placementMode = mode;
+            ['btn-red', 'btn-blue', 'btn-tank'].forEach(id => {
+                const b = document.getElementById(id);
+                if (b) { b.classList.add('opacity-50'); b.classList.remove('btn-active'); }
+            });
+            const activeBtn = document.getElementById(`btn-${mode}`);
+            if (activeBtn) { activeBtn.classList.remove('opacity-50'); activeBtn.classList.add('btn-active'); }
+        }
+
+        function handleUIRefresh() { renderGrid(lastActionTankIdx); }
+
+        function setupMinimalTest() {
+            initGrid();
+            // 紅隊對稱
+            gridState[2] = { type: 'red', isTank: true, isMinion: false, taunted: false, actionId: null };
+            gridState[6] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null };
+            gridState[8] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null };
+            gridState[12] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null };
+            // 藍隊對稱
+            gridState[42] = { type: 'blue', isTank: true, isMinion: false, taunted: false, actionId: null };
+            gridState[36] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null };
+            gridState[38] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null };
+            gridState[32] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null };
+            log("配置完成。"); renderGrid();
+        }
+
+        function saveSnapshot() { if (!snapshotState) snapshotState = JSON.parse(JSON.stringify(gridState)); }
+        function restorePositions() {
+            if (snapshotState) gridState = JSON.parse(JSON.stringify(snapshotState));
+            gridState.forEach(s => { s.taunted = false; s.tauntedByAction = null; s.actionId = null; });
+            globalActionCounter = 0; lastActionTankIdx = null; lastActionCandidates = [];
+            moveTrails = { red: null, blue: null }; renderGrid();
+        }
+        function resetGrid() { initGrid(); log("完全重置。"); }
+
+        function toggleCell(idx) {
+            const r = Math.floor(idx / COLS), currentState = gridState[idx];
+            if (placementMode === 'tank') {
+                if (currentState.type === null) return;
+                gridState.forEach(s => { if (s.type === currentState.type) s.isTank = false; });
+                currentState.isTank = true;
+            } else {
+                if ((placementMode === 'red' && currentState.type === 'red') || (placementMode === 'blue' && currentState.type === 'blue')) {
+                    gridState[idx] = { type: null, isTank: false, isMinion: false, taunted: false };
+                } else {
+                    if (placementMode === 'red' && r <= 3) gridState[idx] = { type: 'red', isTank: false, isMinion: false, taunted: false };
+                    else if (placementMode === 'blue' && r >= 5) gridState[idx] = { type: 'blue', isTank: false, isMinion: false, taunted: false };
+                }
+            }
+            snapshotState = null; renderGrid();
+        }
+
+        function handleDragStart(e, idx) { e.dataTransfer.setData('sourceIndex', idx); e.target.style.opacity = '0.5'; }
+        function handleDragEnd(e) { e.target.style.opacity = '1'; }
+        function handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+        function handleDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+        function handleDrop(e, targetIdx) {
+            e.preventDefault(); e.currentTarget.classList.remove('drag-over');
+            const sourceIdx = parseInt(e.dataTransfer.getData('sourceIndex'));
+            if (sourceIdx === targetIdx || gridState[targetIdx].type !== null) return;
+            gridState[targetIdx] = gridState[sourceIdx];
+            gridState[sourceIdx] = { type: null, isTank: false, isMinion: false, taunted: false, actionId: null };
+            snapshotState = null; renderGrid();
+        }
+
+        function renderGrid(aoeCenterIdx = null) {
+            const container = document.getElementById('grid-container');
+            if (!container) return; container.innerHTML = ''; const cells = [];
+            const isTest = document.getElementById('toggle-test').checked;
+
+            for (let i = 0; i < ROWS * COLS; i++) {
+                const r = Math.floor(i / COLS), c = i % COLS, cell = document.createElement('div');
+                cell.className = 'grid-cell'; cell.id = `cell-${i}`;
+                cell.ondragover = handleDragOver; cell.ondragleave = handleDragLeave; cell.ondrop = (e) => handleDrop(e, i);
+                if (r <= 3) cell.classList.add('red-zone'); else if (r >= 5) cell.classList.add('blue-zone'); else cell.classList.add('middle-zone');
+                
+                if (isTest && lastActionCandidates.includes(i) && i !== aoeCenterIdx) {
+                    const mark = document.createElement('div'); mark.className = 'candidate-mark'; cell.appendChild(mark);
+                }
+                for (let t in moveTrails) { if (moveTrails[t] && moveTrails[t].from === i) {
+                    const g = document.createElement('div'); g.className = 'ghost-trail'; g.innerText = `S:${moveTrails[t].actionId}`; cell.appendChild(g);
+                } }
+                const s = gridState[i];
+                if (s.type) {
+                    const char = document.createElement('div');
+                    char.className = `char-${s.type} ${s.isTank ? 'tank-mark' : ''} ${s.taunted ? 'taunted-status' : ''} flex items-center justify-center`;
+                    char.draggable = true; char.ondragstart = (e) => handleDragStart(e, i); char.ondragend = handleDragEnd;
+                    char.innerHTML = `<span class="pointer-events-none">${s.isTank ? 'T' : 'P'}</span>`;
+                    if (s.actionId) { const b = document.createElement('div'); b.className = 'action-badge'; b.innerText = s.actionId; char.appendChild(b); }
+                    if (s.taunted && s.tauntedByAction) { const b = document.createElement('div'); b.className = 'taunt-action-label'; b.innerText = s.tauntedByAction; char.appendChild(b); }
+                    cell.appendChild(char);
+                }
+                if (aoeCenterIdx !== null && (Math.abs(r-Math.floor(aoeCenterIdx/COLS)) + Math.abs(c-(aoeCenterIdx%COLS))) <= 3) cell.classList.add('aoe-highlight');
+                cell.onclick = () => toggleCell(i); container.appendChild(cell);
+            }
+            setTimeout(() => { drawTrails(); if(aoeCenterIdx !== null) drawAOE(aoeCenterIdx); }, 50);
+        }
+
+        async function moveRed() { runAI('red'); }
+        async function moveBlue() { runAI('blue'); }
+
+        async function runAI(team) {
+            saveSnapshot(); globalActionCounter++;
+            const tIdx = gridState.findIndex(s => s.type === team && s.isTank);
+            const res = await processTankAI(team, tIdx !== -1 ? gridState[tIdx].taunted : false, globalActionCounter);
+            if (res) { 
+                lastActionTankIdx = res.targetIdx;
+                res.tauntedList.forEach(idx => { if (gridState[idx].type !== team) { gridState[idx].taunted = true; gridState[idx].tauntedByAction = globalActionCounter; } });
+                renderGrid(lastActionTankIdx); 
+            }
+        }
+
+        async function processTankAI(team, isTaunted, actionId) {
+            const eTeam = team === 'red' ? 'blue' : 'red';
+            const tankIdx = gridState.findIndex(s => s.type === team && s.isTank);
+            const enemies = gridState.map((s, i) => s.type === eTeam ? i : -1).filter(i => i !== -1);
+            const eTankIdx = gridState.findIndex(s => s.type === eTeam && s.isTank);
+            if (tankIdx === -1 || enemies.length === 0) return null;
+            const sR = Math.floor(tankIdx / COLS), sC = tankIdx % COLS;
+            let candidates = [];
+            for (let i = 0; i < ROWS * COLS; i++) {
+                const tr = Math.floor(i / COLS), tc = i % COLS, dist = Math.abs(tr - sR) + Math.abs(tc - sC);
+                if (dist <= 6 && (!gridState[i].type || i === tankIdx)) {
+                    const tList = enemies.filter(e => (Math.abs(Math.floor(e/COLS)-tr) + Math.abs(e%COLS-tc)) <= 3);
+                    let valid = tList.length > 0;
+                    if (isTaunted && valid && eTankIdx !== -1) {
+                        if (Math.abs(tr - Math.floor(eTankIdx/COLS)) + Math.abs(tc - (eTankIdx%COLS)) !== 1) valid = false;
+                    }
+                    if (valid) candidates.push({ idx: i, tauntCount: tList.length, steps: dist, tList: tList, forward: team === 'red' ? (tr - sR) : (sR - tr), r: tr, c: tc });
+                }
+            }
+            if (candidates.length === 0) { log(`${team}坦無法移動。`); return null; }
+            const activeStrats = aiStrategies.filter(s => s.enabled);
+            candidates.sort((a, b) => {
+                for (let s of activeStrats) {
+                    if (s.id === 'count') { if (a.tauntCount !== b.tauntCount) return b.tauntCount - a.tauntCount; }
+                    if (s.id === 'steps') { if (a.steps !== b.steps) return a.steps - b.steps; }
+                    if (s.id === 'forward') { if (a.forward !== b.forward) return b.forward - a.forward; }
+                }
+                return 0;
+            });
+            const best = candidates[0];
+            lastActionCandidates = candidates.filter(c => {
+                return activeStrats.every(s => {
+                    if (s.id === 'count') return c.tauntCount === best.tauntCount;
+                    if (s.id === 'steps') return c.steps === best.steps;
+                    if (s.id === 'forward') return c.forward === best.forward;
+                    return true;
+                });
+            }).map(c => c.idx);
+            moveTrails[team] = { from: tankIdx, to: best.idx, actionId: actionId };
+            const tData = gridState[tankIdx]; tData.actionId = actionId;
+            gridState[tankIdx] = { type: null, isTank: false, isMinion: false, taunted: false };
+            gridState[best.idx] = tData; return { targetIdx: best.idx, tauntedList: best.tList };
+        }
+
+        function drawTrails() {
+            const svg = document.getElementById('trail-overlay'); svg.innerHTML = '';
+            const wrap = document.getElementById('grid-wrapper').getBoundingClientRect();
+            for (let t in moveTrails) {
+                const tr = moveTrails[t]; if (!tr) continue;
+                const f = document.getElementById(`cell-${tr.from}`).getBoundingClientRect();
+                const tRect = document.getElementById(`cell-${tr.to}`).getBoundingClientRect();
+                const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                l.setAttribute("x1", f.left + f.width/2 - wrap.left); l.setAttribute("y1", f.top + f.height/2 - wrap.top);
+                l.setAttribute("x2", tRect.left + tRect.width/2 - wrap.left); l.setAttribute("y2", tRect.top + tRect.height/2 - wrap.top);
+                l.setAttribute("stroke", t === 'red' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(59, 130, 246, 0.4)');
+                l.setAttribute("stroke-width", "3"); l.setAttribute("stroke-dasharray", "6,4"); svg.appendChild(l);
+            }
+        }
+
+        function drawAOE(cIdx) {
+            const svg = document.getElementById('aoe-overlay'); svg.innerHTML = '';
+            const wrap = document.getElementById('grid-wrapper').getBoundingClientRect();
+            const cellElem = document.getElementById(`cell-${cIdx}`); if (!cellElem) return;
+            const r = cellElem.getBoundingClientRect();
+            const x = r.left + r.width/2 - wrap.left, y = r.top + r.height/2 - wrap.top;
+            const sx = r.width + 4, sy = r.height + 4, rad = 3.5;
+            const d = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            d.setAttribute("points", `${x},${y-sy*rad} ${x+sx*rad},${y} ${x},${y+sy*rad} ${x-sx*rad},${y}`);
+            d.setAttribute("class", "aoe-diamond-svg"); svg.appendChild(d);
+        }
+
+        window.onload = initGrid;
+        window.onresize = handleUIRefresh;
+    </script>
 </body>
 </html>
