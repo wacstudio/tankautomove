@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>坦克 AI 策略編輯器 (9x5) - V29 預設配置更新</title>
+    <title>坦克 AI 策略編輯器 (9x5) - V30 多坦克輪流系統 (修復版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .grid-cell {
@@ -25,7 +25,7 @@
         .char-red { background-color: #ef4444; color: white; border-radius: 50%; width: 85%; height: 85%; z-index: 10; position: relative; cursor: grab; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
         .char-blue { background-color: #3b82f6; color: white; border-radius: 50%; width: 85%; height: 85%; z-index: 10; position: relative; cursor: grab; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
         .minion { border-radius: 20% !important; scale: 0.8; }
-        .tank-mark { border: 4px solid #fbbf24; box-shadow: 0 0 15px rgba(251, 191, 36, 0.6); }
+        .tank-mark { border: 4px solid #fbbf24; box-shadow: 0 0 15px rgba(251, 191, 36, 0.6); font-size: 0.65rem; }
         .action-badge { position: absolute; bottom: -4px; right: -4px; background: #1f2937; color: #fff; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; display: flex; align-items: center; justify-content: center; border: 1.5px solid white; z-index: 25; }
         .taunted-status::after { content: "💢"; position: absolute; top: -10px; right: -6px; font-size: 1.2rem; filter: drop-shadow(0 0 2px white); z-index: 30; }
         .taunt-action-label { position: absolute; top: -16px; right: -16px; font-size: 10px; color: #fff; background: #dc2626; border-radius: 4px; padding: 0 4px; border: 1px solid white; z-index: 31; font-weight: 800; }
@@ -43,7 +43,7 @@
 <body class="bg-slate-50 min-h-screen p-4 flex flex-col items-center">
 
     <div class="max-w-6xl w-full bg-white rounded-2xl shadow-2xl p-6 border border-slate-200">
-        <h1 class="text-2xl font-black mb-6 text-slate-800 text-center tracking-tight">坦克 AI 策略編輯器 V29</h1>
+        <h1 class="text-2xl font-black mb-6 text-slate-800 text-center tracking-tight">坦克 AI 策略編輯器 V30 (多坦克系統)</h1>
         
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
             <!-- 左側：策略設定與控制 -->
@@ -52,15 +52,21 @@
                 <div class="p-4 border border-slate-200 rounded-xl bg-slate-50 shadow-sm">
                     <h2 class="font-bold mb-3 text-xs text-slate-500 uppercase tracking-widest flex justify-between items-center">
                         <span>AI 優先權策略排序</span>
-                        <span class="text-[9px] text-slate-400 normal-case italic">拖動以修改優先級</span>
+                        <span class="text-[9px] text-slate-400 normal-case italic">拖動以修改</span>
                     </h2>
                     <div id="priority-list" class="space-y-2"></div>
                 </div>
 
                 <div class="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
                     <div class="flex gap-2">
-                        <button onclick="moveRed()" class="flex-1 py-2.5 bg-red-600 text-white rounded-lg font-black hover:bg-red-700 shadow-md">紅隊行動</button>
-                        <button onclick="moveBlue()" class="flex-1 py-2.5 bg-blue-600 text-white rounded-lg font-black hover:bg-blue-700 shadow-md">藍隊行動</button>
+                        <div class="flex-1 flex flex-col">
+                            <button onclick="moveRed()" class="py-2.5 bg-red-600 text-white rounded-lg font-black hover:bg-red-700 shadow-md">紅隊行動</button>
+                            <span id="turn-red-indicator" class="text-center text-[10px] text-red-600 font-bold mt-1">下一動: T1</span>
+                        </div>
+                        <div class="flex-1 flex flex-col">
+                            <button onclick="moveBlue()" class="py-2.5 bg-blue-600 text-white rounded-lg font-black hover:bg-blue-700 shadow-md">藍隊行動</button>
+                            <span id="turn-blue-indicator" class="text-center text-[10px] text-blue-600 font-bold mt-1">下一動: T1</span>
+                        </div>
                     </div>
                     
                     <div class="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
@@ -69,20 +75,19 @@
                     </div>
 
                     <div class="grid grid-cols-2 gap-2">
-                        <button onclick="setupMinimalTest()" class="py-2 bg-amber-500 text-white rounded-lg font-bold text-[10px] hover:bg-amber-600 shadow-sm italic">精簡配置 (重置為圖示)</button>
-                        <button onclick="restorePositions()" class="py-2 bg-slate-600 text-white rounded-lg font-bold text-[10px] hover:bg-slate-700">還原位置</button>
+                        <button onclick="setupMinimalTest()" class="py-2 bg-amber-500 text-white rounded-lg font-bold text-[10px] hover:bg-amber-600 shadow-sm">精簡配置 (1T3P)</button>
+                        <button onclick="restorePositions()" class="py-2 bg-slate-600 text-white rounded-lg font-bold text-[10px] hover:bg-slate-700">還原初始狀態</button>
                     </div>
-                    <button onclick="resetGrid()" class="w-full py-2 border border-slate-300 rounded-lg text-slate-500 text-[11px] font-medium hover:bg-slate-100">完全清空地圖</button>
+                    <button onclick="resetGrid()" class="w-full py-2 border border-slate-300 rounded-lg text-slate-500 text-[11px] font-medium hover:bg-slate-50">全部重置地圖</button>
                 </div>
 
                 <div id="log" class="p-4 border border-slate-800 rounded-xl bg-slate-900 text-emerald-400 font-mono text-[10px] h-32 overflow-y-auto shadow-inner leading-relaxed">
-                    V29 啟動。預設佈局已更新。
+                    修復完成。支援多坦克(T1, T2...)輪流行動。
                 </div>
             </div>
 
             <!-- 右側：地圖展示 -->
             <div class="lg:col-span-8 flex flex-col items-center">
-                
                 <div class="mb-4 flex gap-4 bg-white p-2 rounded-lg border border-slate-200 shadow-sm text-[10px] font-bold">
                     <span>配置模式：</span>
                     <button onclick="setMode('red')" id="btn-red" class="px-2 py-1 bg-red-100 text-red-600 rounded btn-active border border-red-200">紅英雄</button>
@@ -97,7 +102,7 @@
                 </div>
                 
                 <div class="mt-4 text-[10px] text-slate-400 italic">
-                    小提示：英雄放置限 4x5 區域，放置後可隨意拖拽。
+                    小提示：多點幾次「設為坦克」可創建 T1, T2 等多名坦克。
                 </div>
             </div>
         </div>
@@ -108,6 +113,7 @@
         let placementMode = 'red', gridState = [], snapshotState = null;
         let globalActionCounter = 0, lastActionTankIdx = null, lastActionCandidates = [];
         let moveTrails = { red: null, blue: null };
+        let nextTankTurn = { red: 1, blue: 1 };
 
         let aiStrategies = [
             { id: 'count', name: '嘲諷人數最大化', enabled: true },
@@ -120,26 +126,28 @@
             if (l) { l.innerHTML += `<br>> ${msg}`; l.scrollTop = l.scrollHeight; }
         }
 
+        // 統一的空格子物件生成器
+        function createEmptyCell() {
+            return { type: null, tankId: null, isMinion: false, taunted: false, tauntedByAction: null, tauntedByTank: null, actionId: null };
+        }
+
         function initGrid() {
-            gridState = Array(ROWS * COLS).fill(null).map(() => ({ 
-                type: null, isTank: false, isMinion: false, taunted: false, tauntedByAction: null, actionId: null 
-            }));
+            gridState = Array(ROWS * COLS).fill(null).map(() => createEmptyCell());
             
             // 預設佈局 (1T + 3P)
-            // 紅方 (Row 0-3)
-            gridState[7] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null };  // (1,2) P
-            gridState[11] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null }; // (2,1) P
-            gridState[13] = { type: 'red', isTank: false, isMinion: false, taunted: false, actionId: null }; // (2,3) P
-            gridState[17] = { type: 'red', isTank: true, isMinion: false, taunted: false, actionId: null };  // (3,2) T
+            gridState[7] = { ...createEmptyCell(), type: 'red' }; 
+            gridState[11] = { ...createEmptyCell(), type: 'red' }; 
+            gridState[13] = { ...createEmptyCell(), type: 'red' }; 
+            gridState[17] = { ...createEmptyCell(), type: 'red', tankId: 1 }; 
             
-            // 藍方 (Row 5-8)
-            gridState[27] = { type: 'blue', isTank: true, isMinion: false, taunted: false, actionId: null }; // (5,2) T
-            gridState[31] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null }; // (6,1) P
-            gridState[33] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null }; // (6,3) P
-            gridState[37] = { type: 'blue', isTank: false, isMinion: false, taunted: false, actionId: null }; // (7,2) P
+            gridState[27] = { ...createEmptyCell(), type: 'blue', tankId: 1 }; 
+            gridState[31] = { ...createEmptyCell(), type: 'blue' }; 
+            gridState[33] = { ...createEmptyCell(), type: 'blue' }; 
+            gridState[37] = { ...createEmptyCell(), type: 'blue' }; 
 
             snapshotState = null; globalActionCounter = 0; lastActionTankIdx = null;
             lastActionCandidates = []; moveTrails = { red: null, blue: null };
+            nextTankTurn = { red: 1, blue: 1 };
             renderPriorityUI();
             renderGrid();
         }
@@ -193,39 +201,75 @@
 
         function setupMinimalTest() {
             initGrid();
-            log("精簡配置已重置為圖示陣型。");
+            log("精簡配置完成。");
         }
 
         function saveSnapshot() { if (!snapshotState) snapshotState = JSON.parse(JSON.stringify(gridState)); }
+
         function restorePositions() {
             if (snapshotState) gridState = JSON.parse(JSON.stringify(snapshotState));
-            gridState.forEach(s => { s.taunted = false; s.tauntedByAction = null; s.actionId = null; });
+            gridState.forEach(s => { 
+                if(s) {
+                    s.taunted = false; s.tauntedByAction = null; s.tauntedByTank = null; s.actionId = null; 
+                }
+            });
             globalActionCounter = 0; lastActionTankIdx = null; lastActionCandidates = [];
-            moveTrails = { red: null, blue: null }; renderGrid();
-            log("已還原配置。");
+            moveTrails = { red: null, blue: null }; nextTankTurn = { red: 1, blue: 1 };
+            renderGrid(); log("已還原配置。");
         }
+
         function resetGrid() { 
-            gridState = Array(ROWS * COLS).fill(null).map(() => ({ 
-                type: null, isTank: false, isMinion: false, taunted: false, tauntedByAction: null, actionId: null 
-            }));
+            gridState = Array(ROWS * COLS).fill(null).map(() => createEmptyCell());
             snapshotState = null; globalActionCounter = 0; lastActionTankIdx = null;
-            lastActionCandidates = []; moveTrails = { red: null, blue: null };
-            renderGrid();
-            log("地圖已清空。"); 
+            lastActionCandidates = []; moveTrails = { red: null, blue: null }; nextTankTurn = { red: 1, blue: 1 };
+            renderGrid(); log("地圖已清空。"); 
+        }
+
+        function updateTurnIndicators() {
+            ['red', 'blue'].forEach(team => {
+                const indicator = document.getElementById(`turn-${team}-indicator`);
+                if (!indicator) return;
+                const tanks = gridState.filter(s => s && s.type === team && s.tankId);
+                if (tanks.length === 0) {
+                    indicator.innerText = `無坦克`;
+                } else {
+                    indicator.innerText = `下一動: T${nextTankTurn[team]}`;
+                }
+            });
         }
 
         function toggleCell(idx) {
             const r = Math.floor(idx / COLS), currentState = gridState[idx];
+            if (!currentState) return;
+
             if (placementMode === 'tank') {
                 if (currentState.type === null) return;
-                gridState.forEach(s => { if (s.type === currentState.type) s.isTank = false; });
-                currentState.isTank = true; currentState.isMinion = false;
+                const team = currentState.type;
+                if (currentState.tankId) {
+                    currentState.tankId = null;
+                    let currentTanks = gridState.map((s, i) => ({s, i})).filter(x => x.s && x.s.type === team && x.s.tankId).sort((a,b) => a.s.tankId - b.s.tankId);
+                    currentTanks.forEach((x, newIdx) => { x.s.tankId = newIdx + 1; });
+                    nextTankTurn[team] = 1;
+                } else {
+                    let maxId = 0;
+                    gridState.forEach(s => { if (s && s.type === team && s.tankId > maxId) maxId = s.tankId; });
+                    currentState.tankId = maxId + 1;
+                    currentState.isMinion = false;
+                }
             } else {
                 if ((placementMode === 'red' && currentState.type === 'red') || (placementMode === 'blue' && currentState.type === 'blue')) {
-                    gridState[idx] = { type: null, isTank: false, isMinion: false, taunted: false };
+                    if (currentState.tankId) {
+                        let team = currentState.type;
+                        gridState[idx] = createEmptyCell();
+                        let currentTanks = gridState.map((s, i) => ({s, i})).filter(x => x.s && x.s.type === team && x.s.tankId).sort((a,b) => a.s.tankId - b.s.tankId);
+                        currentTanks.forEach((x, newIdx) => { x.s.tankId = newIdx + 1; });
+                        nextTankTurn[team] = 1;
+                    } else {
+                        gridState[idx] = createEmptyCell();
+                    }
                 } else {
-                    if (placementMode === 'red' && r <= 3) gridState[idx] = { type: 'red', isTank: false, isMinion: false, taunted: false };
-                    else if (placementMode === 'blue' && r >= 5) gridState[idx] = { type: 'blue', isTank: false, isMinion: false, taunted: false };
+                    if (placementMode === 'red' && r <= 3) gridState[idx] = { ...createEmptyCell(), type: 'red' };
+                    else if (placementMode === 'blue' && r >= 5) gridState[idx] = { ...createEmptyCell(), type: 'blue' };
                 }
             }
             snapshotState = null; renderGrid();
@@ -235,12 +279,19 @@
         function handleDragEnd(e) { e.target.style.opacity = '1'; }
         function handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
         function handleDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+
         function handleDrop(e, targetIdx) {
             e.preventDefault(); e.currentTarget.classList.remove('drag-over');
-            const sourceIdx = parseInt(e.dataTransfer.getData('sourceIndex'));
-            if (sourceIdx === targetIdx || gridState[targetIdx].type !== null) return;
-            gridState[targetIdx] = gridState[sourceIdx];
-            gridState[sourceIdx] = { type: null, isTank: false, isMinion: false, taunted: false, actionId: null };
+            const rawSourceIdx = e.dataTransfer.getData('sourceIndex');
+            const sourceIdx = parseInt(rawSourceIdx);
+            
+            if (isNaN(sourceIdx) || sourceIdx < 0 || sourceIdx >= gridState.length) return;
+            if (sourceIdx === targetIdx || !gridState[targetIdx] || gridState[targetIdx].type !== null) return;
+            
+            // 安全複製
+            gridState[targetIdx] = JSON.parse(JSON.stringify(gridState[sourceIdx]));
+            gridState[sourceIdx] = createEmptyCell();
+            
             snapshotState = null; renderGrid();
         }
 
@@ -255,25 +306,32 @@
                 cell.ondragover = handleDragOver; cell.ondragleave = handleDragLeave; cell.ondrop = (e) => handleDrop(e, i);
                 if (r <= 3) cell.classList.add('red-zone'); else if (r >= 5) cell.classList.add('blue-zone'); else cell.classList.add('middle-zone');
                 
+                const s = gridState[i];
+                if (!s) { gridState[i] = createEmptyCell(); } // 防止 undefined
+
                 if (isTest && lastActionCandidates.includes(i) && i !== aoeCenterIdx) {
                     const mark = document.createElement('div'); mark.className = 'candidate-mark'; cell.appendChild(mark);
                 }
-                for (let t in moveTrails) { if (moveTrails[t] && moveTrails[t].from === i) {
-                    const g = document.createElement('div'); g.className = 'ghost-trail'; g.innerText = `S:${moveTrails[t].actionId}`; cell.appendChild(g);
-                } }
-                const s = gridState[i];
+                for (let t in moveTrails) { 
+                    if (moveTrails[t] && moveTrails[t].from === i) {
+                        const g = document.createElement('div'); g.className = 'ghost-trail'; g.innerText = `S:${moveTrails[t].actionId}`; cell.appendChild(g);
+                    } 
+                }
+
                 if (s.type) {
                     const char = document.createElement('div');
-                    char.className = `char-${s.type} ${s.isTank ? 'tank-mark' : ''} ${s.taunted ? 'taunted-status' : ''} flex items-center justify-center`;
+                    char.className = `char-${s.type} ${s.tankId ? 'tank-mark' : ''} ${s.taunted ? 'taunted-status' : ''} flex items-center justify-center`;
                     char.draggable = true; char.ondragstart = (e) => handleDragStart(e, i); char.ondragend = handleDragEnd;
-                    char.innerHTML = `<span class="pointer-events-none">${s.isTank ? 'T' : 'P'}</span>`;
+                    char.innerHTML = `<span class="pointer-events-none">${s.tankId ? 'T'+s.tankId : (s.isMinion ? 'M' : 'P')}</span>`;
                     if (s.actionId) { const b = document.createElement('div'); b.className = 'action-badge'; b.innerText = s.actionId; char.appendChild(b); }
                     if (s.taunted && s.tauntedByAction) { const b = document.createElement('div'); b.className = 'taunt-action-label'; b.innerText = s.tauntedByAction; char.appendChild(b); }
                     cell.appendChild(char);
                 }
+                
                 if (aoeCenterIdx !== null && (Math.abs(r-Math.floor(aoeCenterIdx/COLS)) + Math.abs(c-(aoeCenterIdx%COLS))) <= 3) cell.classList.add('aoe-highlight');
                 cell.onclick = () => toggleCell(i); container.appendChild(cell);
             }
+            updateTurnIndicators();
             setTimeout(() => { drawTrails(); if(aoeCenterIdx !== null) drawAOE(aoeCenterIdx); else document.getElementById('aoe-overlay').innerHTML=''; }, 50);
         }
 
@@ -282,21 +340,44 @@
 
         async function runAI(team) {
             saveSnapshot(); globalActionCounter++;
-            const tIdx = gridState.findIndex(s => s.type === team && s.isTank);
-            const res = await processTankAI(team, tIdx !== -1 ? gridState[tIdx].taunted : false, globalActionCounter);
+            const tanks = gridState.map((s, i) => ({s, i})).filter(x => x.s && x.s.type === team && x.s.tankId).sort((a,b) => a.s.tankId - b.s.tankId);
+            if (tanks.length === 0) { log(`${team === 'red' ? '紅' : '藍'}隊沒有配置坦克。`); return; }
+
+            let currentTurn = nextTankTurn[team];
+            let tankToMove = tanks.find(x => x.s.tankId === currentTurn);
+            if (!tankToMove) { tankToMove = tanks[0]; currentTurn = tankToMove.s.tankId; }
+
+            const res = await processTankAI(team, tankToMove.i, globalActionCounter);
             if (res) { 
                 lastActionTankIdx = res.targetIdx;
-                res.tauntedList.forEach(idx => { if (gridState[idx].type !== team) { gridState[idx].taunted = true; gridState[idx].tauntedByAction = globalActionCounter; } });
+                res.tauntedList.forEach(idx => { 
+                    if (gridState[idx] && gridState[idx].type !== team) { 
+                        gridState[idx].taunted = true; 
+                        gridState[idx].tauntedByAction = globalActionCounter; 
+                        gridState[idx].tauntedByTank = { team: team, id: currentTurn };
+                    } 
+                });
                 renderGrid(lastActionTankIdx); 
             }
+
+            const currentIndexInArray = tanks.findIndex(x => x.s.tankId === currentTurn);
+            const nextIndex = (currentIndexInArray + 1) % tanks.length;
+            nextTankTurn[team] = tanks[nextIndex].s.tankId;
+            updateTurnIndicators();
         }
 
-        async function processTankAI(team, isTaunted, actionId) {
+        async function processTankAI(team, tankIdx, actionId) {
             const eTeam = team === 'red' ? 'blue' : 'red';
-            const tankIdx = gridState.findIndex(s => s.type === team && s.isTank);
-            const enemies = gridState.map((s, i) => s.type === eTeam ? i : -1).filter(i => i !== -1);
-            const eTankIdx = gridState.findIndex(s => s.type === eTeam && s.isTank);
-            if (tankIdx === -1 || enemies.length === 0) return null;
+            const tankData = gridState[tankIdx];
+            const enemies = gridState.map((s, i) => (s && s.type === eTeam) ? i : -1).filter(i => i !== -1);
+            if (enemies.length === 0) return null;
+
+            const isTaunted = tankData.taunted;
+            let targetTaunterIdx = -1;
+            if (isTaunted && tankData.tauntedByTank) {
+                targetTaunterIdx = gridState.findIndex(s => s && s.type === tankData.tauntedByTank.team && s.tankId === tankData.tauntedByTank.id);
+            }
+
             const sR = Math.floor(tankIdx / COLS), sC = tankIdx % COLS;
             let candidates = [];
             for (let i = 0; i < ROWS * COLS; i++) {
@@ -304,13 +385,14 @@
                 if (dist <= 6 && (!gridState[i].type || i === tankIdx)) {
                     const tList = enemies.filter(e => (Math.abs(Math.floor(e/COLS)-tr) + Math.abs(e%COLS-tc)) <= 3);
                     let valid = tList.length > 0;
-                    if (isTaunted && valid && eTankIdx !== -1) {
-                        if (Math.abs(tr - Math.floor(eTankIdx/COLS)) + Math.abs(tc - (eTankIdx%COLS)) !== 1) valid = false;
+                    if (isTaunted && valid && targetTaunterIdx !== -1) {
+                        if (Math.abs(tr - Math.floor(targetTaunterIdx/COLS)) + Math.abs(tc - (targetTaunterIdx%COLS)) !== 1) valid = false;
                     }
                     if (valid) candidates.push({ idx: i, tauntCount: tList.length, steps: dist, tList: tList, forward: team === 'red' ? (tr - sR) : (sR - tr), r: tr, c: tc });
                 }
             }
-            if (candidates.length === 0) { log(`${team}坦無法移動。`); return null; }
+            if (candidates.length === 0) { log(`T${tankData.tankId} 無法移動。`); return null; }
+            
             const activeStrats = aiStrategies.filter(s => s.enabled);
             candidates.sort((a, b) => {
                 for (let s of activeStrats) {
@@ -329,10 +411,14 @@
                     return true;
                 });
             }).map(c => c.idx);
+            
             moveTrails[team] = { from: tankIdx, to: best.idx, actionId: actionId };
-            const tData = gridState[tankIdx]; tData.actionId = actionId;
-            gridState[tankIdx] = { type: null, isTank: false, isMinion: false, taunted: false };
-            gridState[best.idx] = tData;
+            
+            const movingData = JSON.parse(JSON.stringify(gridState[tankIdx]));
+            movingData.actionId = actionId;
+            gridState[tankIdx] = createEmptyCell();
+            gridState[best.idx] = movingData;
+            log(`T${movingData.tankId} 行動。P1:${best.tauntCount}, P2:${best.steps}, P3:${best.forward}`);
             return { targetIdx: best.idx, tauntedList: best.tList };
         }
 
@@ -341,8 +427,11 @@
             const wrap = document.getElementById('grid-wrapper').getBoundingClientRect();
             for (let t in moveTrails) {
                 const tr = moveTrails[t]; if (!tr) continue;
-                const f = document.getElementById(`cell-${tr.from}`).getBoundingClientRect();
-                const tRect = document.getElementById(`cell-${tr.to}`).getBoundingClientRect();
+                const fElem = document.getElementById(`cell-${tr.from}`);
+                const tElem = document.getElementById(`cell-${tr.to}`);
+                if(!fElem || !tElem) continue;
+                const f = fElem.getBoundingClientRect();
+                const tRect = tElem.getBoundingClientRect();
                 const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 l.setAttribute("x1", f.left + f.width/2 - wrap.left); l.setAttribute("y1", f.top + f.height/2 - wrap.top);
                 l.setAttribute("x2", tRect.left + tRect.width/2 - wrap.left); l.setAttribute("y2", tRect.top + tRect.height/2 - wrap.top);
