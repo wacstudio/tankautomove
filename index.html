@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>坦克 AI 策略編輯器 (9x5) - V30 多坦克輪流系統 (修復版)</title>
+    <title>坦克 AI 策略編輯器 (9x5) - V33 遠離敵人優先</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .grid-cell {
@@ -43,7 +43,7 @@
 <body class="bg-slate-50 min-h-screen p-4 flex flex-col items-center">
 
     <div class="max-w-6xl w-full bg-white rounded-2xl shadow-2xl p-6 border border-slate-200">
-        <h1 class="text-2xl font-black mb-6 text-slate-800 text-center tracking-tight">坦克 AI 策略編輯器 V30 (多坦克系統)</h1>
+        <h1 class="text-2xl font-black mb-6 text-slate-800 text-center tracking-tight">坦克 AI 策略編輯器 V33</h1>
         
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
             <!-- 左側：策略設定與控制 -->
@@ -69,20 +69,20 @@
                         </div>
                     </div>
                     
-                    <div class="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+                    <div class="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 shadow-inner">
                         <label class="text-[11px] font-bold text-slate-600">測試模式顯示候選位</label>
                         <input type="checkbox" id="toggle-test" checked onchange="handleUIRefresh()" class="w-4 h-4 accent-emerald-500">
                     </div>
 
                     <div class="grid grid-cols-2 gap-2">
-                        <button onclick="setupMinimalTest()" class="py-2 bg-amber-500 text-white rounded-lg font-bold text-[10px] hover:bg-amber-600 shadow-sm">精簡配置 (1T3P)</button>
+                        <button onclick="setupMinimalTest()" class="py-2 bg-amber-500 text-white rounded-lg font-bold text-[10px] hover:bg-amber-600 shadow-sm">重置預設陣型 (1T3P)</button>
                         <button onclick="restorePositions()" class="py-2 bg-slate-600 text-white rounded-lg font-bold text-[10px] hover:bg-slate-700">還原初始狀態</button>
                     </div>
                     <button onclick="resetGrid()" class="w-full py-2 border border-slate-300 rounded-lg text-slate-500 text-[11px] font-medium hover:bg-slate-50">全部重置地圖</button>
                 </div>
 
                 <div id="log" class="p-4 border border-slate-800 rounded-xl bg-slate-900 text-emerald-400 font-mono text-[10px] h-32 overflow-y-auto shadow-inner leading-relaxed">
-                    修復完成。支援多坦克(T1, T2...)輪流行動。
+                    V33：新增優先權5「遠離敵人優先」。
                 </div>
             </div>
 
@@ -101,8 +101,11 @@
                     <div id="grid-container" class="contents"></div>
                 </div>
                 
-                <div class="mt-4 text-[10px] text-slate-400 italic">
-                    小提示：多點幾次「設為坦克」可創建 T1, T2 等多名坦克。
+                <div class="mt-4 text-[10px] text-slate-500 font-medium">
+                    <span class="font-bold text-slate-700">計算規則：</span> 上下左右移動 = 1 步；斜向移動 = 2 步。<br>
+                    <span class="font-bold text-slate-700">靠近隊友優先：</span> 計算至所有己方成員之距離總和，越小越優先。<br>
+                    <span class="font-bold text-slate-700">遠離敵人優先：</span> 計算至所有敵方成員之距離總和，越大越優先。<br>
+                    <span class="font-bold text-emerald-600">測試模式：</span> 綠圈會標示出所有在「前兩項優先權」同分的候選格。
                 </div>
             </div>
         </div>
@@ -118,7 +121,9 @@
         let aiStrategies = [
             { id: 'count', name: '嘲諷人數最大化', enabled: true },
             { id: 'steps', name: '移動步數最小化', enabled: true },
-            { id: 'forward', name: '向前推進優先', enabled: true }
+            { id: 'forward', name: '向前推進優先', enabled: true },
+            { id: 'teammates', name: '靠近隊友優先', enabled: false },
+            { id: 'enemiesDist', name: '遠離敵人優先', enabled: false }
         ];
 
         function log(msg) {
@@ -126,7 +131,14 @@
             if (l) { l.innerHTML += `<br>> ${msg}`; l.scrollTop = l.scrollHeight; }
         }
 
-        // 統一的空格子物件生成器
+        /**
+         * 核心距離計算函數：
+         * 上下左右算 1 格，斜走相當於 2 格（橫走1+直走1） => 曼哈頓距離
+         */
+        function calcSteps(r1, c1, r2, c2) {
+            return Math.abs(r1 - r2) + Math.abs(c1 - c2);
+        }
+
         function createEmptyCell() {
             return { type: null, tankId: null, isMinion: false, taunted: false, tauntedByAction: null, tauntedByTank: null, actionId: null };
         }
@@ -148,8 +160,7 @@
             snapshotState = null; globalActionCounter = 0; lastActionTankIdx = null;
             lastActionCandidates = []; moveTrails = { red: null, blue: null };
             nextTankTurn = { red: 1, blue: 1 };
-            renderPriorityUI();
-            renderGrid();
+            renderPriorityUI(); renderGrid();
         }
 
         function renderPriorityUI() {
@@ -198,31 +209,22 @@
         }
 
         function handleUIRefresh() { renderGrid(lastActionTankIdx); }
-
-        function setupMinimalTest() {
-            initGrid();
-            log("精簡配置完成。");
-        }
-
+        function setupMinimalTest() { initGrid(); log("重置預設陣型。"); }
         function saveSnapshot() { if (!snapshotState) snapshotState = JSON.parse(JSON.stringify(gridState)); }
 
         function restorePositions() {
             if (snapshotState) gridState = JSON.parse(JSON.stringify(snapshotState));
-            gridState.forEach(s => { 
-                if(s) {
-                    s.taunted = false; s.tauntedByAction = null; s.tauntedByTank = null; s.actionId = null; 
-                }
-            });
+            gridState.forEach(s => { if(s) { s.taunted = false; s.tauntedByAction = null; s.tauntedByTank = null; s.actionId = null; } });
             globalActionCounter = 0; lastActionTankIdx = null; lastActionCandidates = [];
             moveTrails = { red: null, blue: null }; nextTankTurn = { red: 1, blue: 1 };
-            renderGrid(); log("已還原配置。");
+            renderGrid(); log("已還原初始狀態。");
         }
 
         function resetGrid() { 
             gridState = Array(ROWS * COLS).fill(null).map(() => createEmptyCell());
             snapshotState = null; globalActionCounter = 0; lastActionTankIdx = null;
             lastActionCandidates = []; moveTrails = { red: null, blue: null }; nextTankTurn = { red: 1, blue: 1 };
-            renderGrid(); log("地圖已清空。"); 
+            renderGrid(); log("地圖已完全清空。"); 
         }
 
         function updateTurnIndicators() {
@@ -230,18 +232,13 @@
                 const indicator = document.getElementById(`turn-${team}-indicator`);
                 if (!indicator) return;
                 const tanks = gridState.filter(s => s && s.type === team && s.tankId);
-                if (tanks.length === 0) {
-                    indicator.innerText = `無坦克`;
-                } else {
-                    indicator.innerText = `下一動: T${nextTankTurn[team]}`;
-                }
+                indicator.innerText = tanks.length === 0 ? `無坦克` : `下一動: T${nextTankTurn[team]}`;
             });
         }
 
         function toggleCell(idx) {
             const r = Math.floor(idx / COLS), currentState = gridState[idx];
             if (!currentState) return;
-
             if (placementMode === 'tank') {
                 if (currentState.type === null) return;
                 const team = currentState.type;
@@ -279,36 +276,25 @@
         function handleDragEnd(e) { e.target.style.opacity = '1'; }
         function handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
         function handleDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
-
         function handleDrop(e, targetIdx) {
             e.preventDefault(); e.currentTarget.classList.remove('drag-over');
-            const rawSourceIdx = e.dataTransfer.getData('sourceIndex');
-            const sourceIdx = parseInt(rawSourceIdx);
-            
-            if (isNaN(sourceIdx) || sourceIdx < 0 || sourceIdx >= gridState.length) return;
-            if (sourceIdx === targetIdx || !gridState[targetIdx] || gridState[targetIdx].type !== null) return;
-            
-            // 安全複製
+            const sourceIdx = parseInt(e.dataTransfer.getData('sourceIndex'));
+            if (isNaN(sourceIdx) || sourceIdx === targetIdx || !gridState[targetIdx] || gridState[targetIdx].type !== null) return;
             gridState[targetIdx] = JSON.parse(JSON.stringify(gridState[sourceIdx]));
             gridState[sourceIdx] = createEmptyCell();
-            
             snapshotState = null; renderGrid();
         }
 
         function renderGrid(aoeCenterIdx = null) {
             const container = document.getElementById('grid-container');
-            if (!container) return; container.innerHTML = ''; const cells = [];
+            if (!container) return; container.innerHTML = '';
             const isTest = document.getElementById('toggle-test').checked;
-
             for (let i = 0; i < ROWS * COLS; i++) {
                 const r = Math.floor(i / COLS), c = i % COLS, cell = document.createElement('div');
                 cell.className = 'grid-cell'; cell.id = `cell-${i}`;
                 cell.ondragover = handleDragOver; cell.ondragleave = handleDragLeave; cell.ondrop = (e) => handleDrop(e, i);
                 if (r <= 3) cell.classList.add('red-zone'); else if (r >= 5) cell.classList.add('blue-zone'); else cell.classList.add('middle-zone');
-                
-                const s = gridState[i];
-                if (!s) { gridState[i] = createEmptyCell(); } // 防止 undefined
-
+                const s = gridState[i] || createEmptyCell();
                 if (isTest && lastActionCandidates.includes(i) && i !== aoeCenterIdx) {
                     const mark = document.createElement('div'); mark.className = 'candidate-mark'; cell.appendChild(mark);
                 }
@@ -317,7 +303,6 @@
                         const g = document.createElement('div'); g.className = 'ghost-trail'; g.innerText = `S:${moveTrails[t].actionId}`; cell.appendChild(g);
                     } 
                 }
-
                 if (s.type) {
                     const char = document.createElement('div');
                     char.className = `char-${s.type} ${s.tankId ? 'tank-mark' : ''} ${s.taunted ? 'taunted-status' : ''} flex items-center justify-center`;
@@ -328,7 +313,11 @@
                     cell.appendChild(char);
                 }
                 
-                if (aoeCenterIdx !== null && (Math.abs(r-Math.floor(aoeCenterIdx/COLS)) + Math.abs(c-(aoeCenterIdx%COLS))) <= 3) cell.classList.add('aoe-highlight');
+                // AOE 顯示也改用新的距離公式
+                if (aoeCenterIdx !== null && calcSteps(r, c, Math.floor(aoeCenterIdx/COLS), aoeCenterIdx%COLS) <= 3) {
+                    cell.classList.add('aoe-highlight');
+                }
+
                 cell.onclick = () => toggleCell(i); container.appendChild(cell);
             }
             updateTurnIndicators();
@@ -342,11 +331,9 @@
             saveSnapshot(); globalActionCounter++;
             const tanks = gridState.map((s, i) => ({s, i})).filter(x => x.s && x.s.type === team && x.s.tankId).sort((a,b) => a.s.tankId - b.s.tankId);
             if (tanks.length === 0) { log(`${team === 'red' ? '紅' : '藍'}隊沒有配置坦克。`); return; }
-
             let currentTurn = nextTankTurn[team];
-            let tankToMove = tanks.find(x => x.s.tankId === currentTurn);
-            if (!tankToMove) { tankToMove = tanks[0]; currentTurn = tankToMove.s.tankId; }
-
+            let tankToMove = tanks.find(x => x.s.tankId === currentTurn) || tanks[0];
+            currentTurn = tankToMove.s.tankId;
             const res = await processTankAI(team, tankToMove.i, globalActionCounter);
             if (res) { 
                 lastActionTankIdx = res.targetIdx;
@@ -359,10 +346,8 @@
                 });
                 renderGrid(lastActionTankIdx); 
             }
-
             const currentIndexInArray = tanks.findIndex(x => x.s.tankId === currentTurn);
-            const nextIndex = (currentIndexInArray + 1) % tanks.length;
-            nextTankTurn[team] = tanks[nextIndex].s.tankId;
+            nextTankTurn[team] = tanks[(currentIndexInArray + 1) % tanks.length].s.tankId;
             updateTurnIndicators();
         }
 
@@ -371,6 +356,8 @@
             const tankData = gridState[tankIdx];
             const enemies = gridState.map((s, i) => (s && s.type === eTeam) ? i : -1).filter(i => i !== -1);
             if (enemies.length === 0) return null;
+            
+            const teammates = gridState.map((s, i) => (s && s.type === team && i !== tankIdx) ? i : -1).filter(i => i !== -1);
 
             const isTaunted = tankData.taunted;
             let targetTaunterIdx = -1;
@@ -381,14 +368,35 @@
             const sR = Math.floor(tankIdx / COLS), sC = tankIdx % COLS;
             let candidates = [];
             for (let i = 0; i < ROWS * COLS; i++) {
-                const tr = Math.floor(i / COLS), tc = i % COLS, dist = Math.abs(tr - sR) + Math.abs(tc - sC);
+                const tr = Math.floor(i / COLS), tc = i % COLS;
+                const dist = calcSteps(tr, tc, sR, sC); // 使用新的共用距離計算函數
+                
                 if (dist <= 6 && (!gridState[i].type || i === tankIdx)) {
-                    const tList = enemies.filter(e => (Math.abs(Math.floor(e/COLS)-tr) + Math.abs(e%COLS-tc)) <= 3);
+                    // 找出所有在 3 步 (AOE範圍) 內的敵人
+                    const tList = enemies.filter(e => calcSteps(Math.floor(e/COLS), e%COLS, tr, tc) <= 3);
                     let valid = tList.length > 0;
+                    
                     if (isTaunted && valid && targetTaunterIdx !== -1) {
-                        if (Math.abs(tr - Math.floor(targetTaunterIdx/COLS)) + Math.abs(tc - (targetTaunterIdx%COLS)) !== 1) valid = false;
+                        if (calcSteps(tr, tc, Math.floor(targetTaunterIdx/COLS), targetTaunterIdx%COLS) !== 1) valid = false;
                     }
-                    if (valid) candidates.push({ idx: i, tauntCount: tList.length, steps: dist, tList: tList, forward: team === 'red' ? (tr - sR) : (sR - tr), r: tr, c: tc });
+                    
+                    if (valid) {
+                        let teammateDistSum = 0;
+                        teammates.forEach(tIdx => {
+                            teammateDistSum += calcSteps(tr, tc, Math.floor(tIdx/COLS), tIdx%COLS);
+                        });
+                        
+                        let enemyDistSum = 0;
+                        enemies.forEach(eIdx => {
+                            enemyDistSum += calcSteps(tr, tc, Math.floor(eIdx/COLS), eIdx%COLS);
+                        });
+                        
+                        candidates.push({ 
+                            idx: i, tauntCount: tList.length, steps: dist, tList: tList, 
+                            forward: team === 'red' ? (tr - sR) : (sR - tr), 
+                            teammateDist: teammateDistSum, enemyDist: enemyDistSum, r: tr, c: tc 
+                        });
+                    }
                 }
             }
             if (candidates.length === 0) { log(`T${tankData.tankId} 無法移動。`); return null; }
@@ -399,26 +407,33 @@
                     if (s.id === 'count') { if (a.tauntCount !== b.tauntCount) return b.tauntCount - a.tauntCount; }
                     if (s.id === 'steps') { if (a.steps !== b.steps) return a.steps - b.steps; }
                     if (s.id === 'forward') { if (a.forward !== b.forward) return b.forward - a.forward; }
+                    if (s.id === 'teammates') { if (a.teammateDist !== b.teammateDist) return a.teammateDist - b.teammateDist; }
+                    if (s.id === 'enemiesDist') { if (a.enemyDist !== b.enemyDist) return b.enemyDist - a.enemyDist; } // 遠離敵人，數值越大越好
                 }
                 return 0;
             });
+            
             const best = candidates[0];
+            
+            // 修正：嚴格只取前兩項啟動的優先權 (優先權1 & 優先權2) 作為同分標示依據
+            const top2Strats = activeStrats.slice(0, 2);
             lastActionCandidates = candidates.filter(c => {
-                return activeStrats.every(s => {
+                return top2Strats.every(s => {
                     if (s.id === 'count') return c.tauntCount === best.tauntCount;
                     if (s.id === 'steps') return c.steps === best.steps;
                     if (s.id === 'forward') return c.forward === best.forward;
+                    if (s.id === 'teammates') return c.teammateDist === best.teammateDist;
+                    if (s.id === 'enemiesDist') return c.enemyDist === best.enemyDist;
                     return true;
                 });
             }).map(c => c.idx);
             
             moveTrails[team] = { from: tankIdx, to: best.idx, actionId: actionId };
-            
             const movingData = JSON.parse(JSON.stringify(gridState[tankIdx]));
             movingData.actionId = actionId;
             gridState[tankIdx] = createEmptyCell();
             gridState[best.idx] = movingData;
-            log(`T${movingData.tankId} 行動。P1:${best.tauntCount}, P2:${best.steps}, P3:${best.forward}`);
+            log(`T${movingData.tankId} 行動。P1:${best.tauntCount}, P2:${best.steps}, P3:${best.forward}, P4(隊):${best.teammateDist}, P5(敵):${best.enemyDist}`);
             return { targetIdx: best.idx, tauntedList: best.tList };
         }
 
@@ -427,11 +442,9 @@
             const wrap = document.getElementById('grid-wrapper').getBoundingClientRect();
             for (let t in moveTrails) {
                 const tr = moveTrails[t]; if (!tr) continue;
-                const fElem = document.getElementById(`cell-${tr.from}`);
-                const tElem = document.getElementById(`cell-${tr.to}`);
+                const fElem = document.getElementById(`cell-${tr.from}`), tElem = document.getElementById(`cell-${tr.to}`);
                 if(!fElem || !tElem) continue;
-                const f = fElem.getBoundingClientRect();
-                const tRect = tElem.getBoundingClientRect();
+                const f = fElem.getBoundingClientRect(), tRect = tElem.getBoundingClientRect();
                 const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 l.setAttribute("x1", f.left + f.width/2 - wrap.left); l.setAttribute("y1", f.top + f.height/2 - wrap.top);
                 l.setAttribute("x2", tRect.left + tRect.width/2 - wrap.left); l.setAttribute("y2", tRect.top + tRect.height/2 - wrap.top);
@@ -444,8 +457,7 @@
             const svg = document.getElementById('aoe-overlay'); svg.innerHTML = '';
             const wrap = document.getElementById('grid-wrapper').getBoundingClientRect();
             const cellElem = document.getElementById(`cell-${cIdx}`); if (!cellElem) return;
-            const r = cellElem.getBoundingClientRect();
-            const x = r.left + r.width/2 - wrap.left, y = r.top + r.height/2 - wrap.top;
+            const r = cellElem.getBoundingClientRect(), x = r.left + r.width/2 - wrap.left, y = r.top + r.height/2 - wrap.top;
             const sx = r.width + 4, sy = r.height + 4, rad = 3.5;
             const d = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
             d.setAttribute("points", `${x},${y-sy*rad} ${x+sx*rad},${y} ${x},${y+sy*rad} ${x-sx*rad},${y}`);
